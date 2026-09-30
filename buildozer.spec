@@ -8,6 +8,10 @@ version = 1.0
 
 requirements = python3,kivy==2.3.0,kivymd==1.2.0,plyer,android,pyjnius,certifi
 
+# 必须钉死 p4a 到 release tag。buildozer 默认会 git clone master 分支覆盖掉已安装的 p4a，
+# 而 master 的 python3 recipe 已改为拉取最新 CPython（3.14），Cython 0.29.37 编译 Kivy 会直接失败。
+p4a.branch = v2024.01.21
+
 orientation = portrait
 fullscreen = 0
 android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_AUDIO,FOREGROUND_SERVICE,WAKE_LOCK

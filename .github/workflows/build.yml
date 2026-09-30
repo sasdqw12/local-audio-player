@@ -26,19 +26,31 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          sudo apt update
-          sudo apt install -y \
+          sudo apt-get -qq -o=Dpkg::Use-Pty=0 update
+          sudo apt-get -qq -o=Dpkg::Use-Pty=0 install -y \
             build-essential git openjdk-17-jdk zip unzip ccache \
             autoconf automake libtool pkg-config cmake \
             zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 \
             libssl-dev libsqlite3-dev libffi-dev libbz2-dev libltdl-dev
           java -version
 
-      - name: Install build dependencies (fixed versions)
+      - name: Install build dependencies (pinned toolchain)
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install Cython==0.29.37 buildozer==1.5.0 python-for-android==2024.01.21 virtualenv
-          pip install kivy==2.3.0 kivymd==1.2.0 plyer pyjnius certifi
+          python -m pip install -q --upgrade pip setuptools wheel
+          pip install -q \
+            Cython==0.29.37 \
+            buildozer==1.5.0 \
+            python-for-android==2024.01.21 \
+            "sh==1.14.3" \
+            virtualenv
+          pip install -q kivy==2.3.0 kivymd==1.2.0 plyer pyjnius certifi
+          echo "--- 已安装版本 ---"
+          pip show buildozer python-for-android 2>/dev/null | grep -E "^(Name|Version)"
+
+      - name: Show effective p4a branch
+        run: |
+          echo "buildozer.spec 里的 p4a.branch："
+          grep -E "^\s*p4a\.branch" buildozer.spec || echo "  !! 未设置 —— buildozer 会回落到 master（会拉 Python 3.14，构建必失败）"
 
       - name: Build APK with buildozer
         run: |
@@ -51,6 +63,17 @@ jobs:
 
       - name: Show build result
         run: ls -lh bin/ || true
+
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          P4A=.buildozer/android/platform/python-for-android
+          echo "===== 实际使用的 p4a 版本 ====="
+          git -C "$P4A" describe --tags 2>/dev/null || true
+          echo "===== python3 recipe 钉的版本 ====="
+          grep -nE "^\s*version\s*=" "$P4A/pythonforandroid/recipes/python3/__init__.py" 2>/dev/null | head -3 || true
+          echo "===== 编译 error 行（去重，最多 40 条）====="
+          grep -rhoE "error: [^\"]{0,150}" .buildozer/android/platform/ 2>/dev/null | sort -u | head -40 || true
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

@@ -3,7 +3,7 @@ from kivymd.uix.screen import MDScreen
 from kivymd.uix.button import MDRaisedButton, MDRoundFlatButton
 from kivymd.uix.label import MDLabel
 from kivymd.uix.list import MDList, OneLineListItem
-from kivymd.uix.seekbar import MDSlider
+from kivymd.uix.slider import MDSlider
 from kivy.core.audio import SoundLoader
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.boxlayout import BoxLayout
