@@ -1,0 +1,72 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+# contents: write 用于把编译好的 APK 发布到 Release（提供永久直链）
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    # 固定 22.04：24.04 移除了 libtinfo5 / 默认 Python 3.12，会导致 buildozer 构建失败
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            build-essential git openjdk-17-jdk zip unzip ccache \
+            autoconf automake libtool pkg-config cmake \
+            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 \
+            libssl-dev libsqlite3-dev libffi-dev libbz2-dev libltdl-dev
+          java -version
+
+      - name: Install build dependencies (fixed versions)
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install Cython==0.29.37 buildozer==1.5.0 python-for-android==2024.01.21 virtualenv
+          pip install kivy==2.3.0 kivymd==1.2.0 plyer pyjnius certifi
+
+      - name: Build APK with buildozer
+        run: |
+          buildozer android debug
+        env:
+          ANDROIDSDK: /home/runner/.buildozer/android/platform/android-sdk
+          ANDROIDNDK: /home/runner/.buildozer/android/platform/android-ndk-r25b
+          ANDROIDAPI: 33
+          ANDROIDMINAPI: 21
+
+      - name: Show build result
+        run: ls -lh bin/ || true
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 本地音频播放器APK
+          path: bin/*.apk
+          retention-days: 30
+
+      # 放在 artifact 上传之后：即使发布 Release 失败，也能保住已构建的 APK
+      - name: Publish APK to Release
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="apk-$(date +%Y%m%d-%H%M%S)"
+          gh release create "$TAG" bin/*.apk \
+            --title "APK 构建 $TAG" \
+            --notes "自动构建的 Android 安装包。下载下面的 .apk 文件传到手机安装即可。" \
+            --repo "${{ github.repository }}"
