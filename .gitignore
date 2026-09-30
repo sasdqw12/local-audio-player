@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Buildozer / python-for-android artifacts
+.buildozer/
+bin/
+*.apk
+*.aab
+
+# Config generated at runtime
+player_config.json
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
