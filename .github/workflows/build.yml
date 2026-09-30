@@ -24,15 +24,32 @@ jobs:
         with:
           python-version: '3.10'
 
+      # 关键：Android Gradle Plugin 强制要求 Java 17。
+      # ubuntu-22.04 runner 默认 JAVA_HOME 指向 Java 11（temurin-11），
+      # 仅 apt 安装 openjdk-17 不会改变 JAVA_HOME，
+      # 会在最后 gradlew assembleDebug 阶段报
+      # "Android Gradle plugin requires Java 17 to run. You are currently using Java 11."
+      # 用 setup-java 正确接管 JAVA_HOME 与 PATH。
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify Java
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME"
+          java -version
+          javac -version
+
       - name: Install system dependencies
         run: |
           sudo apt-get -qq -o=Dpkg::Use-Pty=0 update
           sudo apt-get -qq -o=Dpkg::Use-Pty=0 install -y \
-            build-essential git openjdk-17-jdk zip unzip ccache \
+            build-essential git zip unzip ccache \
             autoconf automake libtool pkg-config cmake \
             zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 \
             libssl-dev libsqlite3-dev libffi-dev libbz2-dev libltdl-dev
-          java -version
 
       - name: Install build dependencies (pinned toolchain)
         run: |
@@ -54,7 +71,9 @@ jobs:
 
       - name: Build APK with buildozer
         run: |
-          buildozer android debug
+          set -o pipefail
+          echo "JAVA_HOME=$JAVA_HOME"
+          buildozer android debug 2>&1 | tee build_full.log
         env:
           ANDROIDSDK: /home/runner/.buildozer/android/platform/android-sdk
           ANDROIDNDK: /home/runner/.buildozer/android/platform/android-ndk-r25b
@@ -64,21 +83,40 @@ jobs:
       - name: Show build result
         run: ls -lh bin/ || true
 
-      - name: Dump diagnostics on failure
+      # 失败时只提取关键片段，避免下载十几 MB 的完整日志
+      - name: Extract error excerpt
         if: failure()
         run: |
-          P4A=.buildozer/android/platform/python-for-android
-          echo "===== 实际使用的 p4a 版本 ====="
-          git -C "$P4A" describe --tags 2>/dev/null || true
-          echo "===== python3 recipe 钉的版本 ====="
-          grep -nE "^\s*version\s*=" "$P4A/pythonforandroid/recipes/python3/__init__.py" 2>/dev/null | head -3 || true
-          echo "===== 编译 error 行（去重，最多 40 条）====="
-          grep -rhoE "error: [^\"]{0,150}" .buildozer/android/platform/ 2>/dev/null | sort -u | head -40 || true
+          {
+            echo "########## JAVA / 环境 ##########"
+            echo "JAVA_HOME=$JAVA_HOME"
+            java -version 2>&1 || true
+            echo
+            echo "########## 实际使用的 p4a ##########"
+            P4A=.buildozer/android/platform/python-for-android
+            git -C "$P4A" describe --tags 2>/dev/null || true
+            grep -nE "^\s*version\s*=" "$P4A/pythonforandroid/recipes/python3/__init__.py" 2>/dev/null | head -3 || true
+            echo
+            echo "########## 关键错误 ##########"
+            grep -nE "What went wrong|FAILURE:|Execution failed for task|Could not find a version|A problem occurred|Caused by|^error:|Command failed|Buildozer failed" build_full.log 2>/dev/null | tail -100 || true
+            echo
+            echo "########## 最后 300 行 ##########"
+            tail -300 build_full.log 2>/dev/null || true
+          } > build_error.txt
+          echo "build_error.txt 大小: $(wc -c < build_error.txt) 字节"
+
+      - name: Upload error excerpt
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-error
+          path: build_error.txt
+          retention-days: 7
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 本地音频播放器APK
+          name: local-audio-player-apk
           path: bin/*.apk
           retention-days: 30
 
